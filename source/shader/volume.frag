@@ -63,7 +63,10 @@ void main()
     if (!inside_volume)
         discard;
 
-#if TASK == 10
+
+
+
+/*#if TASK == 10
     vec4 max_val = vec4(0.0, 0.0, 0.0, 0.0);
     
     // the traversal loop,
@@ -90,10 +93,46 @@ void main()
         inside_volume  = inside_volume_bounds(sampling_pos);
     }
 
-    dst = max_val;
-#endif 
+    dst = vec4(1.0, 0.0, 1.0, 1.0);
+//    dst = max_val;
+#endif*/
+
+#if TASK == 10
+    vec4 avg_val = vec4(0.0, 0.0, 0.0, 0.0);
+    int n = 0;
+
+    // the traversal loop,
+    // termination when the sampling position is outside volume boundarys
+    // another termination condition for early ray termination is added
+    while(inside_volume){
+        // get sample
+        float s = get_sample_data(sampling_pos);
+        // apply the transfer functions to retrieve color and opacity
+        vec4 color = texture(transfer_texture, vec2(s,s));
+
+        avg_val.r += color.r;
+        avg_val.g += color.g;
+        avg_val.b += color.b;
+        avg_val.a += color.a;
+
+        n++;
+        // increment the ray sampling position
+        sampling_pos += ray_increment;
+        // update the loop termination condition
+        inside_volume = inside_volume_bounds(sampling_pos);
+    }
+
+    if (n > 0){
+        avg_val.r /= n;
+        avg_val.g /= n;
+        avg_val.b /= n;
+        avg_val.a /= n;
+    }
+
+    dst = avg_val;
+#endif
     
-#if TASK == 11
+/*#if TASK == 10
     // the traversal loop,
     // termination when the sampling position is outside volume boundarys
     // another termination condition for early ray termination is added
@@ -111,7 +150,7 @@ void main()
         // update the loop termination condition
         inside_volume  = inside_volume_bounds(sampling_pos);
     }
-#endif
+#endif*/
     
 #if TASK == 12 || TASK == 13
     // the traversal loop,

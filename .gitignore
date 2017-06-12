@@ -20,8 +20,10 @@
 *.out
 *.app
 
-build
+.idea
+build/*
 cmake_out
+cmake-build-debug/*
 /external/imgui
 /framework/imgui_impl.hpp
 /framework/imgui_impl.cpp
