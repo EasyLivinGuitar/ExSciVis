@@ -65,8 +65,7 @@ void main()
 
 
 
-
-/*#if TASK == 10
+#if TASK == 10
     vec4 max_val = vec4(0.0, 0.0, 0.0, 0.0);
     
     // the traversal loop,
@@ -92,12 +91,10 @@ void main()
         // update the loop termination condition
         inside_volume  = inside_volume_bounds(sampling_pos);
     }
+    dst = max_val;
+#endif
 
-    dst = vec4(1.0, 0.0, 1.0, 1.0);
-//    dst = max_val;
-#endif*/
-
-/*#if TASK == 10
+#if TASK == 11
     vec4 avg_val = vec4(0.0, 0.0, 0.0, 0.0);
     int n = 0;
 
@@ -130,52 +127,7 @@ void main()
     }
 
     dst = avg_val;
-#endif*/
-
-#if TASK == 10
-    float threshold = 0.25;
-    // the traversal loop,
-    // termination when the sampling position is outside volume boundarys
-    // another termination condition for early ray termination is added
-    while(inside_volume){
-        // get sample
-        float s = get_sample_data(sampling_pos);
-        // apply the transfer functions to retrieve color and opacity
-        vec4 color = texture(transfer_texture, vec2(s,s));
-
-        if(color.a > threshold){
-            dst = color + vec4(0.1, 0.1, 0.1, 0.1);
-            break;
-        }
-
-        // increment the ray sampling position
-        sampling_pos += ray_increment;
-        // update the loop termination condition
-        inside_volume = inside_volume_bounds(sampling_pos);
-    }
-
-//    dst = avg_val;
 #endif
-    
-/*#if TASK == 10
-    // the traversal loop,
-    // termination when the sampling position is outside volume boundarys
-    // another termination condition for early ray termination is added
-    while (inside_volume)
-    {      
-        // get sample
-        float s = get_sample_data(sampling_pos);
-
-        // dummy code
-        dst = vec4(sampling_pos, 1.0);
-        
-        // increment the ray sampling position
-        sampling_pos  += ray_increment;
-
-        // update the loop termination condition
-        inside_volume  = inside_volume_bounds(sampling_pos);
-    }
-#endif*/
     
 #if TASK == 12 || TASK == 13
     // the traversal loop,
@@ -186,13 +138,38 @@ void main()
         // get sample
         float s = get_sample_data(sampling_pos);
 
-        // dummy code
-        dst = vec4(light_diffuse_color, 1.0);
+        if(s > iso_value){
+            dst = texture(transfer_texture, vec2(s, s));
+            break;
+        }
 
-        // increment the ray sampling position
-        sampling_pos += ray_increment;
+
 #if TASK == 13 // Binary Search
-        IMPLEMENT;
+        float epsilon = 0.0001;
+        float current_iso = 0.0;
+        vec3 min_pos = sampling_pos - ray_increment;
+        vec3 max_pos = sampling_pos;
+
+        vec3 mid_pos = vec3(0.0, 0.0, 0.0);
+
+        for(int i = 0; i < 20; i++){
+            if(current_iso >= (iso_value - epsilon) && current_iso <= (iso_value + epsilon)){
+                dst = texture(transfer_texture, vec2(current_iso, current_iso));
+                break;
+            }
+
+            mid_pos = (max_pos + min_pos) / 2.0;
+            current_iso = get_sample_data(mid_pos);
+
+            if(current_iso > iso_value){
+                mid_pos = max_pos;
+            }
+            else{
+                mid_pos = min_pos;
+            }
+        }
+
+
 #endif
 #if ENABLE_LIGHTNING == 1 // Add Shading
         IMPLEMENTLIGHT;
@@ -200,7 +177,8 @@ void main()
         IMPLEMENTSHADOW;
 #endif
 #endif
-
+        // increment the ray sampling position
+        sampling_pos += ray_increment;
         // update the loop termination condition
         inside_volume = inside_volume_bounds(sampling_pos);
     }
