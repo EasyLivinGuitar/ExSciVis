@@ -47,6 +47,16 @@ get_sample_data(vec3 in_sampling_pos)
 
 }
 
+/*2.1 gradient*/
+vec3
+get_gradient(vec3 sampling_pos){
+    float dx = get_sample_data(sampling_pos + vec3(1.0, 0.0, 0.0)) - get_sample_data(sampling_pos - vec3(1.0, 0.0, 0.0));
+    float dy = get_sample_data(sampling_pos + vec3(0.0, 1.0, 0.0)) - get_sample_data(sampling_pos - vec3(0.0, 1.0, 0.0));
+    float dz = get_sample_data(sampling_pos + vec3(0.0, 0.0, 1.0)) - get_sample_data(sampling_pos - vec3(0.0, 0.0, 1.0));
+
+    return vec3(dx, dy, dz) * 0.5;
+}
+
 void main()
 {
     /// One step trough the volume
@@ -130,6 +140,7 @@ void main()
 #endif
     
 #if TASK == 12 || TASK == 13
+    vec3 intersection = vec3(0.0, 0.0, 0.0);
     // the traversal loop,
     // termination when the sampling position is outside volume boundarys
     // another termination condition for early ray termination is added
@@ -140,6 +151,7 @@ void main()
 
         if(s > iso_value){
             dst = texture(transfer_texture, vec2(s, s));
+            intersection = sampling_pos;
             break;
         }
 
@@ -155,6 +167,7 @@ void main()
         for(int i = 0; i < 20; i++){
             if(current_iso >= (iso_value - epsilon) && current_iso <= (iso_value + epsilon)){
                 dst = texture(transfer_texture, vec2(current_iso, current_iso));
+                intersection = mid_pos;
                 break;
             }
 
@@ -172,7 +185,24 @@ void main()
 
 #endif
 #if ENABLE_LIGHTNING == 1 // Add Shading
-        IMPLEMENTLIGHT;
+        vec3 ambient_light = light_ambient_color;
+
+        vec3 normal = normalize(get_gradient(intersection));
+        vec3 light_vector = normalize(intersection - light_position);
+
+        float diffuse_term = dot(normal, light_vector);
+
+        vec3 diffuse_light = light_diffuse_color * diffuse_term;
+
+        vec3 view_vector = normalize(intersection - camera_location);
+        vec3 halfway_vector = normalize(view_vector+light_vector);
+
+        float specular_term = pow(dot(normal, halfway_vector), light_ref_coef);
+        vec3 specular_light = light_specular_color * specular_term;
+
+        dst += vec4(ambient_light + diffuse_light + specular_light, 1.0);
+
+
 #if ENABLE_SHADOWING == 1 // Add Shadows
         IMPLEMENTSHADOW;
 #endif
