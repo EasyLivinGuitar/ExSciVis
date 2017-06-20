@@ -50,11 +50,15 @@ get_sample_data(vec3 in_sampling_pos)
 /*2.1 gradient*/
 vec3
 get_gradient(vec3 sampling_pos){
-    float dx = get_sample_data(sampling_pos + vec3(1.0, 0.0, 0.0)) - get_sample_data(sampling_pos - vec3(1.0, 0.0, 0.0));
-    float dy = get_sample_data(sampling_pos + vec3(0.0, 1.0, 0.0)) - get_sample_data(sampling_pos - vec3(0.0, 1.0, 0.0));
-    float dz = get_sample_data(sampling_pos + vec3(0.0, 0.0, 1.0)) - get_sample_data(sampling_pos - vec3(0.0, 0.0, 1.0));
+    float voxX = max_bounds.x / volume_dimensions.x;
+    float voxY = max_bounds.y / volume_dimensions.y;
+    float voxZ = max_bounds.z / volume_dimensions.z;
 
-    return vec3(dx, dy, dz) * 0.5;
+    float dx = get_sample_data(sampling_pos + vec3(voxX, 0.0, 0.0)) - get_sample_data(sampling_pos - vec3(voxX, 0.0, 0.0));
+    float dy = get_sample_data(sampling_pos + vec3(0.0, voxY, 0.0)) - get_sample_data(sampling_pos - vec3(0.0, voxY, 0.0));
+    float dz = get_sample_data(sampling_pos + vec3(0.0, 0.0, voxZ)) - get_sample_data(sampling_pos - vec3(0.0, 0.0, voxZ));
+
+    return vec3(dx, dy, dz);
 }
 
 void main()
@@ -152,67 +156,87 @@ void main()
         if(s > iso_value){
             dst = texture(transfer_texture, vec2(s, s));
             intersection = sampling_pos;
-            break;
-        }
+
 
 
 #if TASK == 13 // Binary Search
-        float epsilon = 0.0001;
-        float current_iso = 0.0;
-        vec3 min_pos = sampling_pos - ray_increment;
-        vec3 max_pos = sampling_pos;
+            float epsilon = 0.0001;
+            float current_iso = 0.0;
+            vec3 min_pos = sampling_pos - ray_increment;
+            vec3 max_pos = sampling_pos;
 
-        vec3 mid_pos = vec3(0.0, 0.0, 0.0);
+            vec3 mid_pos = vec3(0.0, 0.0, 0.0);
 
-        for(int i = 0; i < 20; i++){
-            if(current_iso >= (iso_value - epsilon) && current_iso <= (iso_value + epsilon)){
-                dst = texture(transfer_texture, vec2(current_iso, current_iso));
-                intersection = mid_pos;
-                break;
+            for(int i = 0; i < 20; i++){
+                if(current_iso >= (iso_value - epsilon) && current_iso <= (iso_value + epsilon)){
+                    dst = texture(transfer_texture, vec2(current_iso, current_iso));
+                    intersection = mid_pos;
+                    break;
+                }
+
+                mid_pos = (max_pos + min_pos) / 2.0;
+                current_iso = get_sample_data(mid_pos);
+
+                if(current_iso > iso_value){
+                    mid_pos = max_pos;
+                }
+                else{
+                    mid_pos = min_pos;
+                }
             }
-
-            mid_pos = (max_pos + min_pos) / 2.0;
-            current_iso = get_sample_data(mid_pos);
-
-            if(current_iso > iso_value){
-                mid_pos = max_pos;
-            }
-            else{
-                mid_pos = min_pos;
-            }
-        }
-
 
 #endif
 #if ENABLE_LIGHTNING == 1 // Add Shading
-        vec3 ambient_light = light_ambient_color;
+            vec3 ambient_light = light_ambient_color;
 
-        vec3 normal = normalize(get_gradient(intersection));
-        vec3 light_vector = normalize(intersection - light_position);
+            vec3 normal = normalize(get_gradient(intersection));
+    //        dst = vec4(normal / 2.0 + 0.5, 1.0);
 
-        float diffuse_term = dot(normal, light_vector);
+    //        intersection = (Modelview * vec4(intersection, 0.0)).xyz;
+            vec3 light_vector = (vec4(normalize(intersection - light_position), 1.0) * Modelview).xyz;
 
-        vec3 diffuse_light = light_diffuse_color * diffuse_term;
+            float diffuse_term = dot(normal, light_vector);
 
-        vec3 view_vector = normalize(intersection - camera_location);
-        vec3 halfway_vector = normalize(view_vector+light_vector);
+            vec3 diffuse_light = light_diffuse_color * diffuse_term;
 
-        float specular_term = pow(dot(normal, halfway_vector), light_ref_coef);
-        vec3 specular_light = light_specular_color * specular_term;
+            vec3 view_vector = normalize(intersection - camera_location);
+            vec3 halfway_vector = normalize(view_vector+light_vector);
 
-        dst += vec4(ambient_light + diffuse_light + specular_light, 1.0);
+            float specular_term = pow(dot(normal, halfway_vector), light_ref_coef);
+            vec3 specular_light = light_specular_color * specular_term;
 
+            dst += vec4(ambient_light + diffuse_light + specular_light, 1.0);
 
 #if ENABLE_SHADOWING == 1 // Add Shadows
-        IMPLEMENTSHADOW;
+            bool inside_volume_secondary = inside_volume_bounds(intersection);
+            vec3 secondary_ray_increment = -light_vector * sampling_distance * 4;
+
+            vec3 secondary_sampling_pos = intersection + secondary_ray_increment;
+
+            while(inside_volume_secondary){
+                float s = get_sample_data(secondary_sampling_pos);
+
+                if(s > iso_value){
+                    dst = vec4(0.1, 0.1, 0.1, 1.0);
+                    break;
+                }
+
+                secondary_sampling_pos += secondary_ray_increment;
+
+                inside_volume_secondary = inside_volume_bounds(secondary_sampling_pos);
+            }
 #endif
 #endif
-        // increment the ray sampling position
-        sampling_pos += ray_increment;
-        // update the loop termination condition
-        inside_volume = inside_volume_bounds(sampling_pos);
+        break;
+        }
+            // increment the ray sampling position
+            sampling_pos += ray_increment;
+            // update the loop termination condition
+            inside_volume = inside_volume_bounds(sampling_pos);
+
     }
-#endif 
+#endif
+
 
 #if TASK == 31
     // the traversal loop,
