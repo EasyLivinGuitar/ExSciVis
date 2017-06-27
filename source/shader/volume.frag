@@ -242,6 +242,11 @@ void main()
     // the traversal loop,
     // termination when the sampling position is outside volume boundarys
     // another termination condition for early ray termination is added
+    int i = 0;
+    float transparency = 1.0;
+
+    vec3 I = vec3(0.0, 0.0, 0.0);
+
     while (inside_volume)
     {
         // get sample
@@ -250,11 +255,30 @@ void main()
 #else
         float s = get_sample_data(sampling_pos);
 #endif
-        // dummy code
-        dst = vec4(light_specular_color, 1.0);
+        vec4 transfer_data = texture(transfer_texture, vec2(s, s));
+        float opacity = transfer_data.a;
+        vec3 color = transfer_data.rgb;
+
+        vec3 I_i = color * opacity;
+        float T_i = 1.0f - opacity;
+
+        I = I_i;
+        transparency = 1.0;
+        for(int j=0; j < i; j++){
+            transparency *= T_i;
+            I += I_i * transparency;
+        }
+
+        if(transparency < 0.001){
+            break;
+        }
+
+
 
         // increment the ray sampling position
         sampling_pos += ray_increment;
+
+        i++;
 
 #if ENABLE_LIGHTNING == 1 // Add Shading
         IMPLEMENT;
@@ -263,6 +287,8 @@ void main()
         // update the loop termination condition
         inside_volume = inside_volume_bounds(sampling_pos);
     }
+
+    dst = vec4(I, 1.0);
 #endif 
 
     // return the calculated color value
