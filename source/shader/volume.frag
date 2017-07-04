@@ -7,6 +7,8 @@
 #define ENABLE_LIGHTNING 0
 #define ENABLE_SHADOWING 0
 
+#define USE_BACK_TO_FRONT 1
+
 in vec3 ray_entry_position;
 
 layout(location = 0) out vec4 FragColor;
@@ -59,6 +61,19 @@ get_gradient(vec3 sampling_pos){
     float dz = get_sample_data(sampling_pos + vec3(0.0, 0.0, voxZ)) - get_sample_data(sampling_pos - vec3(0.0, 0.0, voxZ));
 
     return vec3(dx, dy, dz);
+}
+
+vec3
+get_out_point(vec3 ray_entry_position, vec3 ray_increment){
+    vec3 sampling_pos = ray_entry_position + ray_increment;
+    bool inside_volume = true;
+
+    while(inside_volume){
+        sampling_pos += ray_increment;
+        inside_volume = inside_volume_bounds(sampling_pos);
+    }
+
+    return sampling_pos - ray_increment;
 }
 
 void main()
@@ -239,13 +254,15 @@ void main()
 
 
 #if TASK == 31
+#if USE_BACK_TO_FRONT == 0
     // the traversal loop,
     // termination when the sampling position is outside volume boundarys
     // another termination condition for early ray termination is added
-    int i = 0;
-    float transparency = 1.0;
+    float s = get_sample_data(sampling_pos);
+    vec4 transfer_data = texture(transfer_texture, vec2(s, s));
 
-    vec3 I = vec3(0.0, 0.0, 0.0);
+    float transparency = 1.0;
+    vec3 intesity = transfer_data.rgb * transfer_data.a;
 
     while (inside_volume)
     {
@@ -253,32 +270,25 @@ void main()
 #if ENABLE_OPACITY_CORRECTION == 1 // Opacity Correction
         IMPLEMENT;
 #else
-        float s = get_sample_data(sampling_pos);
+        s = get_sample_data(sampling_pos);
 #endif
-        vec4 transfer_data = texture(transfer_texture, vec2(s, s));
+        transfer_data = texture(transfer_texture, vec2(s, s));
+
         float opacity = transfer_data.a;
         vec3 color = transfer_data.rgb;
 
-        vec3 I_i = color * opacity;
-        float T_i = 1.0f - opacity;
+        vec3 current_intesity = color * opacity;
+        float current_transparency = 1.0f - opacity;
 
-        I = I_i;
-        transparency = 1.0;
-        for(int j=0; j < i; j++){
-            transparency *= T_i;
-            I += I_i * transparency;
-        }
+        transparency *= current_transparency;
+        intesity += current_intesity * transparency;
 
-        if(transparency < 0.001){
+        /*if(transparency < 0.001){
             break;
-        }
-
-
+        }*/
 
         // increment the ray sampling position
         sampling_pos += ray_increment;
-
-        i++;
 
 #if ENABLE_LIGHTNING == 1 // Add Shading
         IMPLEMENT;
@@ -288,7 +298,28 @@ void main()
         inside_volume = inside_volume_bounds(sampling_pos);
     }
 
-    dst = vec4(I, 1.0);
+    dst = vec4(intesity, 1.0);
+#else
+    vec3 intensity = vec3(0.0, 0.0, 0.0);
+    vec3 ray_out_point = get_out_point(ray_entry_position, ray_increment);
+
+    sampling_pos = ray_out_point;
+
+    while(inside_volume){
+        float s = get_sample_data(sampling_pos);
+        vec4 transfer_data = texture(transfer_texture, vec2(s,s));
+
+        vec3 color = transfer_data.rgb;
+        float opacity = transfer_data.a;
+
+        intensity = color * opacity + intensity * (1.0 - opacity);
+
+        sampling_pos -= ray_increment;
+        inside_volume = inside_volume_bounds(sampling_pos);
+    }
+
+    dst = vec4(intensity, 1.0);
+#endif
 #endif 
 
     // return the calculated color value
