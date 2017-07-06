@@ -74,6 +74,27 @@ get_out_point(vec3 ray_entry_position, vec3 ray_increment){
     }
 
     return sampling_pos - ray_increment;
+
+}
+
+vec3
+shade(vec3 point, vec3 in_color){
+    vec3 ambient_light = light_ambient_color;
+
+    vec3 normal = normalize(get_gradient(point));
+    vec3 light_vector = (vec4(normalize(point - light_position), 1.0) * Modelview).xyz;
+
+    float diffuse_term = dot(normal, light_vector);
+
+    vec3 diffuse_light = light_diffuse_color * diffuse_term;
+
+    vec3 view_vector = normalize(point - camera_location);
+    vec3 halfway_vector = normalize(view_vector+light_vector);
+
+    float specular_term = pow(dot(normal, halfway_vector), light_ref_coef);
+    vec3 specular_light = light_specular_color * specular_term;
+
+    return in_color * ambient_light + in_color * diffuse_light + specular_light;
 }
 
 void main()
@@ -202,27 +223,9 @@ void main()
 
 #endif
 #if ENABLE_LIGHTNING == 1 // Add Shading
-            vec3 ambient_light = light_ambient_color;
-
-            vec3 normal = normalize(get_gradient(intersection));
-    //        dst = vec4(normal / 2.0 + 0.5, 1.0);
-
-    //        intersection = (Modelview * vec4(intersection, 0.0)).xyz;
-            vec3 light_vector = (vec4(normalize(intersection - light_position), 1.0) * Modelview).xyz;
-
-            float diffuse_term = dot(normal, light_vector);
-
-            vec3 diffuse_light = light_diffuse_color * diffuse_term;
-
-            vec3 view_vector = normalize(intersection - camera_location);
-            vec3 halfway_vector = normalize(view_vector+light_vector);
-
-            float specular_term = pow(dot(normal, halfway_vector), light_ref_coef);
-            vec3 specular_light = light_specular_color * specular_term;
-
-            dst += vec4(ambient_light + diffuse_light + specular_light, 1.0);
-
+            dst = vec4(shade(intersection, dst.rgb), 1.0);
 #if ENABLE_SHADOWING == 1 // Add Shadows
+            vec3 light_vector = (vec4(normalize(intersection - light_position), 1.0) * Modelview).xyz;
             bool inside_volume_secondary = inside_volume_bounds(intersection);
             vec3 secondary_ray_increment = -light_vector * sampling_distance * 4;
 
@@ -254,6 +257,7 @@ void main()
 
 
 #if TASK == 31
+    vec3 intensity = vec3(0.0, 0.0, 0.0);
 #if USE_BACK_TO_FRONT == 0
     // the traversal loop,
     // termination when the sampling position is outside volume boundarys
@@ -262,7 +266,7 @@ void main()
     vec4 transfer_data = texture(transfer_texture, vec2(s, s));
 
     float transparency = 1.0;
-    vec3 intesity = transfer_data.rgb * transfer_data.a;
+    intensity = transfer_data.rgb * transfer_data.a;
 
     while (inside_volume)
     {
@@ -277,30 +281,22 @@ void main()
         float opacity = transfer_data.a;
         vec3 color = transfer_data.rgb;
 
-        vec3 current_intesity = color * opacity;
+#if ENABLE_LIGHTNING == 1 // Add Shading
+
+#endif
+        vec3 current_intensity = color * opacity;
         float current_transparency = 1.0f - opacity;
 
         transparency *= current_transparency;
-        intesity += current_intesity * transparency;
-
-        /*if(transparency < 0.001){
-            break;
-        }*/
+        intensity += current_intensity * transparency;
 
         // increment the ray sampling position
         sampling_pos += ray_increment;
 
-#if ENABLE_LIGHTNING == 1 // Add Shading
-        IMPLEMENT;
-#endif
-
         // update the loop termination condition
         inside_volume = inside_volume_bounds(sampling_pos);
     }
-
-    dst = vec4(intesity, 1.0);
 #else
-    vec3 intensity = vec3(0.0, 0.0, 0.0);
     vec3 ray_out_point = get_out_point(ray_entry_position, ray_increment);
 
     sampling_pos = ray_out_point;
@@ -312,14 +308,18 @@ void main()
         vec3 color = transfer_data.rgb;
         float opacity = transfer_data.a;
 
+#if ENABLE_LIGHTNING == 1 // Add Shading
+
+#endif
+
         intensity = color * opacity + intensity * (1.0 - opacity);
 
         sampling_pos -= ray_increment;
         inside_volume = inside_volume_bounds(sampling_pos);
     }
 
-    dst = vec4(intensity, 1.0);
 #endif
+    dst = vec4(intensity, 1.0);
 #endif 
 
     // return the calculated color value
