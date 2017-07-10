@@ -84,17 +84,26 @@ shade(vec3 point, vec3 in_color){
     vec3 normal = normalize(get_gradient(point));
     vec3 light_vector = (vec4(normalize(point - light_position), 1.0) * Modelview).xyz;
 
-    float diffuse_term = dot(normal, light_vector);
+    //Fancy disco skull
+//    return light_vector;
 
-    vec3 diffuse_light = light_diffuse_color * diffuse_term;
+    float diffuse_term = dot(normal, normalize(light_vector));
+
+    vec3 diffuse_light = max(light_diffuse_color * diffuse_term, 0.0);
 
     vec3 view_vector = normalize(point - camera_location);
     vec3 halfway_vector = normalize(view_vector+light_vector);
 
-    float specular_term = pow(dot(normal, halfway_vector), light_ref_coef);
-    vec3 specular_light = light_specular_color * specular_term;
+    float specular_term = pow(max(dot(normal, halfway_vector), 0.0), light_ref_coef);
+    vec3 specular_light = max(light_specular_color * specular_term, 0.0);
+
 
     return in_color * ambient_light + in_color * diffuse_light + specular_light;
+}
+
+float
+correct_opacity(float in_opacity){
+    return 1.0 - pow(1.0 - in_opacity, sampling_distance / sampling_distance_ref * 255);
 }
 
 void main()
@@ -258,10 +267,8 @@ void main()
 
 #if TASK == 31
     vec3 intensity = vec3(0.0, 0.0, 0.0);
+    //FRONT TO BACK
 #if USE_BACK_TO_FRONT == 0
-    // the traversal loop,
-    // termination when the sampling position is outside volume boundarys
-    // another termination condition for early ray termination is added
     float s = get_sample_data(sampling_pos);
     vec4 transfer_data = texture(transfer_texture, vec2(s, s));
 
@@ -270,25 +277,29 @@ void main()
 
     while (inside_volume)
     {
-        // get sample
-#if ENABLE_OPACITY_CORRECTION == 1 // Opacity Correction
-        IMPLEMENT;
-#else
         s = get_sample_data(sampling_pos);
-#endif
         transfer_data = texture(transfer_texture, vec2(s, s));
 
         float opacity = transfer_data.a;
         vec3 color = transfer_data.rgb;
 
 #if ENABLE_LIGHTNING == 1 // Add Shading
-
+        color *= 5.0 * shade(sampling_pos, color);
 #endif
+
         vec3 current_intensity = color * opacity;
         float current_transparency = 1.0f - opacity;
 
+#if ENABLE_OPACITY_CORRECTION == 1 // Opacity Correction
+        opacity = correct_opacity(opacity);
+        current_transparency = pow(current_transparency, sampling_distance / sampling_distance_ref * 255);
+#endif
         transparency *= current_transparency;
         intensity += current_intensity * transparency;
+
+        if(transparency < 0.001){
+            break;
+        }
 
         // increment the ray sampling position
         sampling_pos += ray_increment;
@@ -296,7 +307,7 @@ void main()
         // update the loop termination condition
         inside_volume = inside_volume_bounds(sampling_pos);
     }
-#else
+#else //BACK TO FRONT
     vec3 ray_out_point = get_out_point(ray_entry_position, ray_increment);
 
     sampling_pos = ray_out_point;
@@ -308,8 +319,12 @@ void main()
         vec3 color = transfer_data.rgb;
         float opacity = transfer_data.a;
 
-#if ENABLE_LIGHTNING == 1 // Add Shading
+#if ENABLE_OPACITY_CORRECTION == 1
+        opacity = correct_opacity(opacity);
+#endif
 
+#if ENABLE_LIGHTNING == 1 // Add Shading
+        color *= 5.0 * shade(sampling_pos, color);
 #endif
 
         intensity = color * opacity + intensity * (1.0 - opacity);
